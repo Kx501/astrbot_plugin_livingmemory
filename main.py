@@ -339,10 +339,13 @@ class LivingMemoryPlugin(Star):
             self.llm_provider = self.context.get_using_provider()
             logger.info("使用 AstrBot 当前默认的 LLM Provider。")
 
-    @filter.on_llm_request()
+    @filter.on_llm_request(priority=-200)
     async def handle_memory_recall(self, event: AstrMessageEvent, req: ProviderRequest):
         """
         [事件钩子] 在 LLM 请求前，查询并注入长期记忆。
+        
+        优先级 -200 确保在其他插件（如心流插件 -100）之后执行
+        支持注入到 system_prompt 或 contexts，可配置角色和位置
         """
         # 等待初始化完成
         if not await self._wait_for_initialization():
@@ -383,10 +386,22 @@ class LivingMemoryPlugin(Star):
                 if recalled_memories:
                     # 格式化并注入记忆
                     memory_str = format_memories_for_injection(recalled_memories)
-                    req.system_prompt = memory_str + "\n" + req.system_prompt
-                    logger.info(
-                        f"[{session_id}] 成功向 System Prompt 注入 {len(recalled_memories)} 条记忆。"
-                    )
+                    
+                    # 获取注入位置配置
+                    injection_config = self.config.get("injection_settings", {})
+                    injection_position = injection_config.get("position", "start")  # "start" 或 "end"
+                    
+                    if injection_position == "end":
+                        # 末尾注入：使用 assistant 角色追加到 contexts
+                        req.contexts.append({
+                            "role": "assistant",
+                            "content": f"[长期记忆]\n{memory_str}"
+                        })
+                        logger.info(f"[{session_id}] 成功向 contexts 末尾注入 {len(recalled_memories)} 条记忆（助手身份）")
+                    else:
+                        # 开头注入：系统提示词开头
+                        req.system_prompt = memory_str + "\n" + req.system_prompt
+                        logger.info(f"[{session_id}] 成功向系统提示词注入 {len(recalled_memories)} 条记忆")
 
                 # 管理会话历史
                 session_data = self.session_manager.get_session(session_id)

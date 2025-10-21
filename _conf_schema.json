@@ -252,6 +252,23 @@
       }
     }
   },
+  "injection_settings": {
+    "description": "记忆注入设置",
+    "hint": "控制记忆注入位置和角色",
+    "type": "object",
+    "items": {
+      "position": {
+        "description": "注入位置",
+        "hint": "start=开头（注入到系统提示词中）; end=末尾（以assistant追加到消息列表，推荐，可触发API缓存）",
+        "type": "string",
+        "options": [
+          "start",
+          "end"
+        ],
+        "default": "start"
+      }
+    }
+  },
   "reflection_engine": {
     "description": "反思引擎设置",
     "hint": "负责生成和评估记忆",
