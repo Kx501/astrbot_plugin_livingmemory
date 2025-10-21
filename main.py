@@ -396,6 +396,17 @@ class LivingMemoryPlugin(Star):
                     # 格式化并注入记忆
                     memory_str = format_memories_for_injection(recalled_memories)
                     
+                    # 调试：显示召回的记忆
+                    logger.debug("\n" + "=" * 80)
+                    logger.debug(f"[记忆召回] 成功召回 {len(recalled_memories)} 条记忆")
+                    logger.debug("=" * 80)
+                    for idx, mem in enumerate(recalled_memories, 1):
+                        logger.debug(f"  [{idx}] 重要性={mem.score:.2f} | {mem.text[:80]}{'...' if len(mem.text) > 80 else ''}")
+                    logger.debug("-" * 80)
+                    logger.debug("格式化后的注入内容:")
+                    logger.debug(memory_str[:500] + "..." if len(memory_str) > 500 else memory_str)
+                    logger.debug("=" * 80 + "\n")
+                    
                     # 获取注入位置配置
                     injection_config = self.config.get("injection_settings", {})
                     injection_position = injection_config.get("position", "start")  # "start" 或 "end"
@@ -411,6 +422,40 @@ class LivingMemoryPlugin(Star):
                         # 开头注入：系统提示词开头
                         req.system_prompt = memory_str + "\n" + req.system_prompt
                         logger.info(f"[{session_id}] 成功向系统提示词注入 {len(recalled_memories)} 条记忆")
+                else:
+                    logger.debug("\n" + "=" * 80)
+                    logger.debug("[记忆召回] 未召回任何记忆（可能是首次对话或没有相关记忆）")
+                    logger.debug("=" * 80 + "\n")
+                
+                # ========== 调试：显示最终发送给大模型的完整消息列表 ==========
+                logger.debug("=" * 80)
+                logger.debug("[发送给大模型] 完整消息列表")
+                logger.debug("=" * 80)
+                
+                msg_index = 0
+                
+                # 1. System Prompt
+                if req.system_prompt:
+                    logger.debug(f"\n>>> Message {msg_index} | ROLE: system")
+                    logger.debug(req.system_prompt[:500] + "..." if len(req.system_prompt) > 500 else req.system_prompt)
+                    msg_index += 1
+                
+                # 2. Contexts（历史消息）
+                if req.contexts:
+                    for msg in req.contexts:
+                        role = msg.get("role", "unknown")
+                        content = msg.get("content", "")
+                        logger.debug(f"\n>>> Message {msg_index} | ROLE: {role}")
+                        logger.debug(content[:300] + "..." if len(content) > 300 else content)
+                        msg_index += 1
+                
+                # 3. 当前用户问题
+                logger.debug(f"\n>>> Message {msg_index} | ROLE: user")
+                logger.debug(req.prompt)
+                
+                logger.debug("\n" + "=" * 80)
+                logger.debug(f"总计 {msg_index + 1} 条消息: 1 system + {len(req.contexts)} history + 1 current")
+                logger.debug("=" * 80 + "\n")
 
                 # 管理会话历史
                 session_data = self.session_manager.get_session(session_id)
