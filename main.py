@@ -263,7 +263,16 @@ class LivingMemoryPlugin(Star):
             )
             await self.webui_server.start()
         except Exception as e:
-            logger.error(f"启动 WebUI 控制台失败: {e}", exc_info=True)
+            # WebUI 启动失败不应导致插件加载失败
+            error_msg = str(e)
+            if "10048" in error_msg or "address already in use" in error_msg.lower():
+                logger.warning(
+                    f"WebUI 控制台启动失败：端口 {webui_config.get('port', 8080)} 被占用。"
+                    f"插件将继续正常工作，但 WebUI 暂时不可用。"
+                    f"请稍后重载插件或重启 AstrBot。"
+                )
+            else:
+                logger.error(f"启动 WebUI 控制台失败: {e}", exc_info=False)
             self.webui_server = None
 
     async def _stop_webui(self):
@@ -722,11 +731,36 @@ class LivingMemoryPlugin(Star):
     async def terminate(self):
         """
         插件停止时的清理逻辑。
+        确保所有资源完全释放后才返回。
         """
         logger.info("LivingMemory 插件正在停止...")
-        await self._stop_webui()
+        
+        # 取消初始化任务（如果还在进行中）
+        if self._initialization_task and not self._initialization_task.done():
+            self._initialization_task.cancel()
+            try:
+                await self._initialization_task
+            except asyncio.CancelledError:
+                pass
+        
+        # 停止 WebUI（等待完全停止）
+        try:
+            await self._stop_webui()
+        except Exception as e:
+            logger.error(f"停止 WebUI 时出错: {e}")
+        
+        # 停止遗忘代理
         if self.forgetting_agent:
-            await self.forgetting_agent.stop()
+            try:
+                await self.forgetting_agent.stop()
+            except Exception as e:
+                logger.error(f"停止遗忘代理时出错: {e}")
+        
+        # 关闭数据库
         if self.db:
-            await self.db.close()
+            try:
+                await self.db.close()
+            except Exception as e:
+                logger.error(f"关闭数据库时出错: {e}")
+        
         logger.info("LivingMemory 插件已成功停止。")
